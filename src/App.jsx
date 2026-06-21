@@ -6,9 +6,9 @@ import Login from "./Login";
 const BRANCHES = ["Khan Jee 1", "Khan Jee 2", "Khan Jee 3", "Central Kitchen", "Khan Foods"];
 const CATEGORIES = [
   "Dall and Spices","Bori Items","Minum Items","Kitchen Items","Disposables","Drinks","Meat","Cold Room Items",
-  "Store Rack Other Items","Cleaning Items","Cooking Oil"
+  "Store Rack Other Items","Cleaning Items","Cooking Oil","Fruits","Vegetables"
 ];
-const UNITS = ["Kg","g","Pcs","ltr","ml","Box","Bori","Bottle","Tray","Pack","Gallon","Ctn"];
+const UNITS = ["Kg","Pcs","ltr","Box","Bori","Bottle","Tray","Pack","Gallon","Ctn","Bundle"];
 
 const fmt       = (n) => "MYR " + Number(n || 0).toFixed(2);
 const today     = () => new Date().toISOString().split("T")[0];
