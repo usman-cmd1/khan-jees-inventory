@@ -706,109 +706,256 @@ export default function App() {
   }
 
   // ── RECEIVING ──────────────────────────────────────────────
+  // ── RECEIVING ──────────────────────────────────────────────
   function Receiving() {
-    const blank = { date:today(), itemId:items[0]?.id||"", qty:"", rate:"", supplier:"", notes:"" };
-    const [form, setForm] = useState(blank);
+    const blank = { date:today(), itemId:"", qty:"", rate:"", supplier:"", notes:"" };
+    const [form, setForm]         = useState(blank);
+    const [itemSearch, setSearch] = useState("");
+    const [showDrop, setShowDrop] = useState(false);
 
-    const handleItemChange = (itemId) => {
-      const item=items.find(i=>String(i.id)===String(itemId));
-      setForm(f=>({...f,itemId,rate:item?.rate||""}));
+    const filtered = items.filter(i =>
+      i.name.toLowerCase().includes(itemSearch.toLowerCase())
+    ).slice(0, 10);
+
+    const selectedItem = items.find(i => String(i.id) === String(form.itemId));
+
+    const pickItem = (item) => {
+      setForm(f => ({ ...f, itemId: item.id, rate: item.rate || "" }));
+      setSearch("");
+      setShowDrop(false);
+    };
+
+    const clearItem = () => {
+      setForm(f => ({ ...f, itemId: "", rate: "" }));
+      setSearch("");
     };
 
     const save = () => {
-      if (!form.itemId||!form.qty||!form.rate) return;
-      const newRate=Number(form.rate);
-      const itemId=form.itemId;
-      setReceiving([...receiving,{...form,id:Date.now(),itemId,qty:Number(form.qty),rate:newRate}]);
-      if (items.find(i=>String(i.id)===String(itemId))?.rate !== newRate) {
-        setItems(items.map(i=>String(i.id)===String(itemId)?{...i,rate:newRate}:i));
+      if (!form.itemId || !form.qty || !form.rate) return;
+      const newRate = Number(form.rate);
+      const itemId  = form.itemId;
+      setReceiving([...receiving, { ...form, id: Date.now(), itemId, qty: Number(form.qty), rate: newRate }]);
+      if (items.find(i => String(i.id) === String(itemId))?.rate !== newRate) {
+        setItems(items.map(i => String(i.id) === String(itemId) ? { ...i, rate: newRate } : i));
       }
       setForm(blank);
+      setSearch("");
     };
 
-    const totalValue=receiving.reduce((a,r)=>a+r.qty*r.rate,0);
-    const selectedItem=items.find(i=>String(i.id)===String(form.itemId));
+    const totalValue = receiving.reduce((a, r) => a + r.qty * r.rate, 0);
 
     return (
       <div>
         <div style={S.card}>
           <p style={S.h2}>Record received stock (GRN)</p>
           <div style={S.fgrid}>
-            <div><div style={S.lbl}>Date</div><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div>
-            <div><div style={S.lbl}>Item</div>
-              <select value={form.itemId} onChange={e=>handleItemChange(e.target.value)}>
-                {items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
-              </select>
+            <div>
+              <div style={S.lbl}>Date</div>
+              <input type="date" value={form.date}
+                onChange={e => setForm({ ...form, date: e.target.value })} />
             </div>
-            <div><div style={S.lbl}>Qty received</div><input type="number" placeholder="0" value={form.qty} onChange={e=>setForm({...form,qty:e.target.value})} /></div>
+
+            {/* ── Item search ── */}
+            <div style={{ position: "relative" }}>
+              <div style={S.lbl}>Item</div>
+              {selectedItem ? (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "7px 10px",
+                  border: "0.5px solid #1D9E75",
+                  borderRadius: 8, background: "#F0FBF7",
+                  fontSize: 13, color: "#085041",
+                }}>
+                  <i className="ti ti-check" style={{ fontSize: 13, flexShrink: 0 }}></i>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{selectedItem.name}</span>
+                  <span style={{ fontSize: 11, color: "#0F6E56" }}>{selectedItem.unit}</span>
+                  <button onClick={clearItem} style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    color: "#0F6E56", padding: 0, fontSize: 18, lineHeight: 1,
+                  }}>×</button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    placeholder="Type to search item..."
+                    value={itemSearch}
+                    onChange={e => { setSearch(e.target.value); setShowDrop(true); }}
+                    onFocus={() => setShowDrop(true)}
+                    onBlur={() => setTimeout(() => setShowDrop(false), 150)}
+                    autoComplete="off"
+                  />
+                  {showDrop && itemSearch && filtered.length > 0 && (
+                    <div style={{
+                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+                      background: "var(--color-background-primary)",
+                      border: "0.5px solid var(--color-border-secondary)",
+                      borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                      marginTop: 4, maxHeight: 220, overflowY: "auto",
+                    }}>
+                      {filtered.map(item => (
+                        <div key={item.id}
+                          onMouseDown={() => pickItem(item)}
+                          style={{
+                            padding: "9px 12px", cursor: "pointer", fontSize: 13,
+                            display: "flex", justifyContent: "space-between", alignItems: "center",
+                            borderBottom: "0.5px solid var(--color-border-tertiary)",
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#F0FBF7"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        >
+                          <span style={{ fontWeight: 500 }}>{item.name}</span>
+                          <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+                            {item.unit} · {fmt(item.rate || 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {showDrop && itemSearch && filtered.length === 0 && (
+                    <div style={{
+                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+                      background: "var(--color-background-primary)",
+                      border: "0.5px solid var(--color-border-secondary)",
+                      borderRadius: 8, padding: "10px 12px", fontSize: 13,
+                      color: "var(--color-text-secondary)", marginTop: 4,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    }}>
+                      No items found for "{itemSearch}"
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <div style={S.lbl}>Qty received</div>
+              <input type="number" placeholder="0" value={form.qty}
+                onChange={e => setForm({ ...form, qty: e.target.value })} />
+            </div>
+
             <div>
               <div style={S.lbl}>
                 Buying rate (MYR)
-                {selectedItem&&Number(form.rate)!==selectedItem.rate&&form.rate!==""&&
-                  <span style={{marginLeft:6,fontSize:11,color:"#BA7517",fontWeight:500}}>⚠ will update item rate</span>
+                {selectedItem && Number(form.rate) !== selectedItem.rate && form.rate !== "" &&
+                  <span style={{ marginLeft: 6, fontSize: 11, color: "#BA7517", fontWeight: 500 }}>
+                    ⚠ will update item rate
+                  </span>
                 }
               </div>
-              <input type="number" placeholder="0.00" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} />
-              {selectedItem&&<div style={{fontSize:11,color:"var(--color-text-secondary)",marginTop:3}}>Current rate: {fmt(selectedItem.rate||0)}</div>}
+              <input type="number" placeholder="0.00" value={form.rate}
+                onChange={e => setForm({ ...form, rate: e.target.value })} />
+              {selectedItem &&
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 3 }}>
+                  Current rate: {fmt(selectedItem.rate || 0)}
+                </div>
+              }
             </div>
-            <div><div style={S.lbl}>Supplier</div>
-              <select value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})}>
+
+            <div>
+              <div style={S.lbl}>Supplier</div>
+              <select value={form.supplier}
+                onChange={e => setForm({ ...form, supplier: e.target.value })}>
                 <option value="">-- Select --</option>
-                {suppliers.map(s=><option key={s.id}>{s.company}</option>)}
+                {suppliers.map(s => <option key={s.id}>{s.company}</option>)}
               </select>
             </div>
-            <div><div style={S.lbl}>Notes</div><input placeholder="Optional" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
+
+            <div>
+              <div style={S.lbl}>Notes</div>
+              <input placeholder="Optional" value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })} />
+            </div>
           </div>
-          {form.qty&&form.rate&&
-            <p style={{fontSize:13,color:"var(--color-text-secondary)",marginBottom:12}}>
-              Total value: <strong style={{color:"var(--color-text-primary)"}}>{fmt(Number(form.qty)*Number(form.rate))}</strong>
+
+          {form.qty && form.rate &&
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 12 }}>
+              Total value: <strong style={{ color: "var(--color-text-primary)" }}>
+                {fmt(Number(form.qty) * Number(form.rate))}
+              </strong>
             </p>
           }
-          <button style={S.btnP} onClick={save}><i className="ti ti-plus"></i>Record receiving</button>
+          <button style={S.btnP} onClick={save}>
+            <i className="ti ti-plus"></i>Record receiving
+          </button>
         </div>
+
         <div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <p style={{...S.h2,margin:0}}>Receiving history</p>
-            <span style={{fontSize:13,color:"var(--color-text-secondary)"}}>Total: <strong style={{color:"var(--color-text-primary)"}}>{fmt(totalValue)}</strong></span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <p style={{ ...S.h2, margin: 0 }}>Receiving history</p>
+            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+              Total: <strong style={{ color: "var(--color-text-primary)" }}>{fmt(totalValue)}</strong>
+            </span>
           </div>
-          <div style={{overflowX:"auto"}}>
+          <div style={{ overflowX: "auto" }}>
             <table style={S.table}><thead><tr>
               <th style={S.th}>Date</th><th style={S.th}>Item</th><th style={S.th}>Qty</th>
               <th style={S.thR}>Rate</th><th style={S.thR}>Total</th>
               <th style={S.th}>Supplier</th><th style={S.th}>Notes</th><th style={S.th}></th>
             </tr></thead>
-            <tbody>{[...receiving].reverse().map((r,i)=>{
-              const item=items.find(x=>x.id===r.itemId);
+            <tbody>{[...receiving].reverse().map((r, i) => {
+              const item = items.find(x => x.id === r.itemId);
               return <tr key={i}>
                 <td style={S.td}>{r.date}</td>
-                <td style={{...S.td,fontWeight:500}}>{item?.name||"-"}</td>
+                <td style={{ ...S.td, fontWeight: 500 }}>{item?.name || "-"}</td>
                 <td style={S.td}>{r.qty} {item?.unit}</td>
                 <td style={S.tdR}>{fmt(r.rate)}</td>
-                <td style={{...S.tdR,fontWeight:500}}>{fmt(r.qty*r.rate)}</td>
-                <td style={S.td}>{r.supplier||"-"}</td>
-                <td style={S.td}>{r.notes||"-"}</td>
-                <td style={S.td}><button style={S.btnD} onClick={()=>setReceiving(receiving.filter(x=>x.id!==r.id))}><i className="ti ti-trash"></i></button></td>
+                <td style={{ ...S.tdR, fontWeight: 500 }}>{fmt(r.qty * r.rate)}</td>
+                <td style={S.td}>{r.supplier || "-"}</td>
+                <td style={S.td}>{r.notes || "-"}</td>
+                <td style={S.td}>
+                  <button style={S.btnD}
+                    onClick={() => setReceiving(receiving.filter(x => x.id !== r.id))}>
+                    <i className="ti ti-trash"></i>
+                  </button>
+                </td>
               </tr>;
             })}</tbody>
             </table>
           </div>
-          {receiving.length===0&&<p style={{color:"var(--color-text-secondary)",fontSize:13}}>No receiving records yet.</p>}
+          {receiving.length === 0 &&
+            <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>No receiving records yet.</p>
+          }
         </div>
       </div>
     );
   }
 
   // ── DISPATCHING ────────────────────────────────────────────
+  // ── DISPATCHING ────────────────────────────────────────────
   function Dispatching() {
-    const blank = { date:today(), itemId:items[0]?.id||"", branch:BRANCHES[0], qty:"", notes:"" };
-    const [form, setForm] = useState(blank);
+    const blank = { date: today(), itemId: "", branch: BRANCHES[0], qty: "", notes: "" };
+    const [form, setForm]         = useState(blank);
+    const [itemSearch, setSearch] = useState("");
+    const [showDrop, setShowDrop] = useState(false);
+
+    const filtered = items.filter(i =>
+      i.name.toLowerCase().includes(itemSearch.toLowerCase())
+    ).slice(0, 10);
+
+    const selectedItem = items.find(i => String(i.id) === String(form.itemId));
+
+    const pickItem = (item) => {
+      setForm(f => ({ ...f, itemId: item.id }));
+      setSearch("");
+      setShowDrop(false);
+    };
+
+    const clearItem = () => {
+      setForm(f => ({ ...f, itemId: "" }));
+      setSearch("");
+    };
 
     const save = () => {
-      if (!form.itemId||!form.qty) return;
-      const avail=getStock(form.itemId);
-      if (Number(form.qty)>avail){alert(`Only ${avail} units available.`);return;}
-      setDisp([...dispatching,{...form,id:Date.now(),itemId:form.itemId,qty:Number(form.qty)}]);
+      if (!form.itemId || !form.qty) return;
+      const avail = getStock(form.itemId);
+      if (Number(form.qty) > avail) {
+        alert(`Only ${avail} units available.`); return;
+      }
+      setDisp([...dispatching, {
+        ...form, id: Date.now(), itemId: form.itemId, qty: Number(form.qty)
+      }]);
       setForm(blank);
+      setSearch("");
     };
 
     return (
@@ -816,52 +963,160 @@ export default function App() {
         <div style={S.card}>
           <p style={S.h2}>Dispatch stock to branch</p>
           <div style={S.fgrid}>
-            <div><div style={S.lbl}>Date</div><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div>
-            <div><div style={S.lbl}>Item</div>
-              <select value={form.itemId} onChange={e=>setForm({...form,itemId:e.target.value})}>
-                {items.map(i=><option key={i.id} value={i.id}>{i.name} (avail: {getStock(i.id)} {i.unit})</option>)}
+            <div>
+              <div style={S.lbl}>Date</div>
+              <input type="date" value={form.date}
+                onChange={e => setForm({ ...form, date: e.target.value })} />
+            </div>
+
+            {/* ── Item search ── */}
+            <div style={{ position: "relative" }}>
+              <div style={S.lbl}>Item</div>
+              {selectedItem ? (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "7px 10px",
+                  border: "0.5px solid #1D9E75",
+                  borderRadius: 8, background: "#F0FBF7",
+                  fontSize: 13, color: "#085041",
+                }}>
+                  <i className="ti ti-check" style={{ fontSize: 13, flexShrink: 0 }}></i>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{selectedItem.name}</span>
+                  <span style={{ fontSize: 11, color: "#0F6E56" }}>
+                    avail: {getStock(selectedItem.id)} {selectedItem.unit}
+                  </span>
+                  <button onClick={clearItem} style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    color: "#0F6E56", padding: 0, fontSize: 18, lineHeight: 1,
+                  }}>×</button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    placeholder="Type to search item..."
+                    value={itemSearch}
+                    onChange={e => { setSearch(e.target.value); setShowDrop(true); }}
+                    onFocus={() => setShowDrop(true)}
+                    onBlur={() => setTimeout(() => setShowDrop(false), 150)}
+                    autoComplete="off"
+                  />
+                  {showDrop && itemSearch && filtered.length > 0 && (
+                    <div style={{
+                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+                      background: "var(--color-background-primary)",
+                      border: "0.5px solid var(--color-border-secondary)",
+                      borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                      marginTop: 4, maxHeight: 220, overflowY: "auto",
+                    }}>
+                      {filtered.map(item => {
+                        const avail = getStock(item.id);
+                        return (
+                          <div key={item.id}
+                            onMouseDown={() => pickItem(item)}
+                            style={{
+                              padding: "9px 12px", cursor: "pointer", fontSize: 13,
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              borderBottom: "0.5px solid var(--color-border-tertiary)",
+                              opacity: avail <= 0 ? 0.45 : 1,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#F0FBF7"}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                          >
+                            <span style={{ fontWeight: 500 }}>{item.name}</span>
+                            <span style={{
+                              fontSize: 11,
+                              color: avail <= 0 ? "#A32D2D" : "var(--color-text-secondary)"
+                            }}>
+                              {avail} {item.unit} available
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {showDrop && itemSearch && filtered.length === 0 && (
+                    <div style={{
+                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+                      background: "var(--color-background-primary)",
+                      border: "0.5px solid var(--color-border-secondary)",
+                      borderRadius: 8, padding: "10px 12px", fontSize: 13,
+                      color: "var(--color-text-secondary)", marginTop: 4,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    }}>
+                      No items found for "{itemSearch}"
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <div style={S.lbl}>Branch</div>
+              <select value={form.branch}
+                onChange={e => setForm({ ...form, branch: e.target.value })}>
+                {BRANCHES.map(b => <option key={b}>{b}</option>)}
               </select>
             </div>
-            <div><div style={S.lbl}>Branch</div>
-              <select value={form.branch} onChange={e=>setForm({...form,branch:e.target.value})}>
-                {BRANCHES.map(b=><option key={b}>{b}</option>)}
-              </select>
+
+            <div>
+              <div style={S.lbl}>Qty to dispatch</div>
+              <input type="number" placeholder="0" value={form.qty}
+                onChange={e => setForm({ ...form, qty: e.target.value })} />
             </div>
-            <div><div style={S.lbl}>Qty to dispatch</div><input type="number" placeholder="0" value={form.qty} onChange={e=>setForm({...form,qty:e.target.value})} /></div>
-            <div><div style={S.lbl}>Notes</div><input placeholder="Optional" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
+
+            <div>
+              <div style={S.lbl}>Notes</div>
+              <input placeholder="Optional" value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })} />
+            </div>
           </div>
-          {form.itemId&&form.qty&&
-            <p style={{fontSize:13,color:"var(--color-text-secondary)",marginBottom:12}}>
-              Value: <strong style={{color:"var(--color-text-primary)"}}>{fmt(Number(form.qty)*(getRate(form.itemId)||0))}</strong>
-              <span style={{marginLeft:8}}>@ {fmt(getRate(form.itemId))} / {items.find(i=>String(i.id)===String(form.itemId))?.unit}</span>
+
+          {form.itemId && form.qty &&
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 12 }}>
+              Value: <strong style={{ color: "var(--color-text-primary)" }}>
+                {fmt(Number(form.qty) * (getRate(form.itemId) || 0))}
+              </strong>
+              <span style={{ marginLeft: 8 }}>
+                @ {fmt(getRate(form.itemId))} / {selectedItem?.unit}
+              </span>
             </p>
           }
-          <button style={S.btnP} onClick={save}><i className="ti ti-upload"></i>Dispatch</button>
+          <button style={S.btnP} onClick={save}>
+            <i className="ti ti-upload"></i>Dispatch
+          </button>
         </div>
+
         <div style={S.card}>
           <p style={S.h2}>Dispatch history</p>
-          <div style={{overflowX:"auto"}}>
+          <div style={{ overflowX: "auto" }}>
             <table style={S.table}><thead><tr>
               <th style={S.th}>Date</th><th style={S.th}>Item</th><th style={S.th}>Branch</th>
               <th style={S.thR}>Qty</th><th style={S.thR}>Rate</th><th style={S.thR}>Value</th>
               <th style={S.th}>Notes</th><th style={S.th}></th>
             </tr></thead>
-            <tbody>{[...dispatching].reverse().map((d,i)=>{
-              const item=items.find(x=>x.id===d.itemId);
+            <tbody>{[...dispatching].reverse().map((d, i) => {
+              const item = items.find(x => x.id === d.itemId);
               return <tr key={i}>
                 <td style={S.td}>{d.date}</td>
-                <td style={{...S.td,fontWeight:500}}>{item?.name||"-"}</td>
+                <td style={{ ...S.td, fontWeight: 500 }}>{item?.name || "-"}</td>
                 <td style={S.td}><span style={S.badge("teal")}>{d.branch}</span></td>
                 <td style={S.tdR}>{d.qty} {item?.unit}</td>
-                <td style={S.tdR}>{fmt(item?.rate||0)}</td>
-                <td style={{...S.tdR,fontWeight:500}}>{fmt(Number(d.qty)*(item?.rate||0))}</td>
-                <td style={S.td}>{d.notes||"-"}</td>
-                <td style={S.td}><button style={S.btnD} onClick={()=>setDisp(dispatching.filter(x=>x.id!==d.id))}><i className="ti ti-trash"></i></button></td>
+                <td style={S.tdR}>{fmt(item?.rate || 0)}</td>
+                <td style={{ ...S.tdR, fontWeight: 500 }}>{fmt(Number(d.qty) * (item?.rate || 0))}</td>
+                <td style={S.td}>{d.notes || "-"}</td>
+                <td style={S.td}>
+                  <button style={S.btnD}
+                    onClick={() => setDisp(dispatching.filter(x => x.id !== d.id))}>
+                    <i className="ti ti-trash"></i>
+                  </button>
+                </td>
               </tr>;
             })}</tbody>
             </table>
           </div>
-          {dispatching.length===0&&<p style={{color:"var(--color-text-secondary)",fontSize:13}}>No dispatches yet.</p>}
+          {dispatching.length === 0 &&
+            <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>No dispatches yet.</p>
+          }
         </div>
       </div>
     );
