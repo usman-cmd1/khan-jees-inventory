@@ -253,52 +253,78 @@ export default function App() {
   // ── Supabase setters ───────────────────────────────────────
   const setItems = async (newItems) => {
     const current = itemsRef.current;
-    const oldIds = new Set(current.map(i => i.id));
-    const newIds = new Set(newItems.map(i => i.id));
+    const oldIds  = new Set(current.map(i => String(i.id)));
+    const newIds  = new Set(newItems.map(i => String(i.id)));
+
+    // ── 1. DELETE removed items ──────────────────────────────
     for (const old of current) {
-      if (!newIds.has(old.id)) {
-        const { data: delData, error } = await supabase.from("stock").delete().eq("id", old.id).select();
+      if (!newIds.has(String(old.id))) {
+        const { data: delData, error } = await supabase
+          .from("stock").delete().eq("id", old.id).select();
         if (error) {
-          console.error("Delete failed for item", old.id, error);
           alert(`Could not delete "${old.name}": ${error.message}`);
-          return; // abort so local state doesn't drift from the database
+          return;
         }
         if (!delData || delData.length === 0) {
-          console.error("Delete blocked (0 rows affected) for item", old.id);
-          alert(`"${old.name}" was not actually deleted. Supabase returned no error but removed 0 rows — this means a Row Level Security policy on the "stock" table is silently blocking the delete. Run the SQL fix to add a DELETE policy, then try again.`);
-          return; // abort so local state doesn't drift from the database
+          alert(`"${old.name}" was not deleted — a Supabase RLS policy is blocking it. Add a DELETE policy on the stock table.`);
+          return;
         }
       }
     }
+
+    
     for (const ni of newItems) {
-      if (oldIds.has(ni.id)) {
-        const old = current.find(i => i.id === ni.id);
-        if (JSON.stringify(old) !== JSON.stringify(ni)) {
-          await supabase.from("stock").update({
-            item: `${ni.name}:::${ni.lowThreshold}`, category: ni.category,
-            unit: ni.unit, quantity: ni.opening, unit_cost: ni.rate,
-            updated_at: new Date().toISOString(),
-          }).eq("id", ni.id);
+      if (oldIds.has(String(ni.id))) {
+        const { error: updErr } = await supabase
+          .from("stock")
+          .update({
+            item:      `${ni.name}:::${ni.lowThreshold}`,
+            category:  ni.category,
+            unit:      ni.unit,
+            quantity:  Number(ni.opening),
+            unit_cost: Number(ni.rate) || 0,
+          })
+          .eq("id", ni.id);
+
+        if (updErr) {
+          console.error("Update failed:", ni.name, updErr);
+          alert(`Could not save "${ni.name}": ${updErr.message}`);
+          return;
         }
       }
     }
-    for (let ni of newItems) {
-      if (!oldIds.has(ni.id)) {
-        const { data, error } = await supabase.from("stock").insert({
-          branch: "__master__", item: `${ni.name}:::${ni.lowThreshold}`,
-          category: ni.category, unit: ni.unit, quantity: ni.opening,
-          unit_cost: ni.rate, created_by: session?.user?.id,
-        }).select().single();
+
+    
+    let finalItems = [...newItems];
+    for (const ni of newItems) {
+      if (!oldIds.has(String(ni.id))) {
+        const { data, error } = await supabase
+          .from("stock")
+          .insert({
+            branch:     "__master__",
+            item:       `${ni.name}:::${ni.lowThreshold}`,
+            category:   ni.category,
+            unit:       ni.unit,
+            quantity:   Number(ni.opening),
+            unit_cost:  Number(ni.rate) || 0,
+            created_by: session?.user?.id,
+          })
+          .select()
+          .single();
+
         if (error || !data) {
-          console.error("Insert failed for item", ni.name, error);
-          alert(`"${ni.name}" was NOT saved to the database (it will disappear on refresh). Error: ${error?.message || "no row returned — check Row Level Security INSERT policy on the \"stock\" table."}`);
-          return; // abort so we don't show a fake "saved" state
+          alert(`"${ni.name}" was NOT saved. Error: ${error?.message || "no row returned — check RLS INSERT policy on the stock table."}`);
+          return;
         }
-        newItems = newItems.map(i => i.id === ni.id ? { ...i, id: data.id } : i);
+    
+        finalItems = finalItems.map(i =>
+          String(i.id) === String(ni.id) ? { ...i, id: data.id } : i
+        );
       }
     }
-    itemsRef.current = newItems;
-    setItemsState(newItems);
+
+    itemsRef.current = finalItems;
+    setItemsState(finalItems);
   };
 
   const setReceiving = async (newRec) => {
@@ -624,12 +650,65 @@ export default function App() {
       i.name.toLowerCase().includes(search.toLowerCase())
     );
 
-    const save = () => {
+    const [saving, setSaving] = useState(false);
+
+    const save = async () => {
       if (!form.name.trim()) return;
-      const data = { ...form, opening:Number(form.opening), lowThreshold:Number(form.lowThreshold), rate:Number(form.rate)||0 };
-      if (editId) { setItems(items.map(i=>i.id===editId?{...i,...data}:i)); setEdit(null); }
-      else        { setItems([...items,{...data,id:`temp_${Date.now()}`}]); }
+      setSaving(true);
+      const data = {
+        ...form,
+        opening:      Number(form.opening),
+        lowThreshold: Number(form.lowThreshold),
+        rate:         Number(form.rate) || 0
+      };
+      if (editId) {
+        // optimistic: update local state immediately so UI reflects change now
+        const updated = items.map(i => i.id === editId ? { ...i, ...data } : i);
+        itemsRef.current = updated;
+        setItemsState(updated);
+        // then persist to Supabase
+        const { error: updErr } = await supabase
+          .from("stock")
+          .update({
+            item:      `${data.name}:::${data.lowThreshold}`,
+            category:  data.category,
+            unit:      data.unit,
+            quantity:  Number(data.opening),
+            unit_cost: Number(data.rate) || 0,
+          })
+          .eq("id", editId);
+        if (updErr) {
+          alert(`Could not save "${data.name}": ${updErr.message}`);
+          // revert on failure
+          itemsRef.current = items;
+          setItemsState(items);
+        }
+        setEdit(null);
+      } else {
+        // INSERT new item
+        const { data: inserted, error } = await supabase
+          .from("stock")
+          .insert({
+            branch:     "__master__",
+            item:       `${data.name}:::${data.lowThreshold}`,
+            category:   data.category,
+            unit:       data.unit,
+            quantity:   Number(data.opening),
+            unit_cost:  Number(data.rate) || 0,
+            created_by: session?.user?.id,
+          })
+          .select()
+          .single();
+        if (error || !inserted) {
+          alert(`"${data.name}" was NOT saved: ${error?.message || "no row returned"}`);
+        } else {
+          const withReal = [...items, { ...data, id: inserted.id }];
+          itemsRef.current = withReal;
+          setItemsState(withReal);
+        }
+      }
       setForm(blank);
+      setSaving(false);
     };
 
     return (
@@ -653,8 +732,9 @@ export default function App() {
             </div>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button style={S.btnP} onClick={save}>
-              <i className={`ti ${editId?"ti-check":"ti-plus"}`}></i>{editId?"Save changes":"Add item"}
+            <button style={{...S.btnP, opacity: saving ? 0.7 : 1}} onClick={save} disabled={saving}>
+              <i className={`ti ${saving ? "ti-loader" : editId ? "ti-check" : "ti-plus"}`}></i>
+              {saving ? "Saving…" : editId ? "Save changes" : "Add item"}
             </button>
             {editId&&<button style={S.btn} onClick={()=>{setEdit(null);setForm(blank);}}>Cancel</button>}
           </div>
@@ -1620,7 +1700,22 @@ function Demand() {
         const gTotal=stockRows.reduce((a,r)=>a+r.value,0);
         bodyHtml=`<table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Opening</th><th style="text-align:right">Received</th><th style="text-align:right">Dispatched</th><th style="text-align:right">Closing</th><th style="text-align:right">Value (MYR)</th></tr></thead>
         <tbody>${stockRows.map(r=>`<tr><td>${r.name}</td><td>${r.category}</td><td>${r.unit}</td><td style="text-align:right">${Number(r.rate||0).toFixed(2)}</td><td style="text-align:right">${r.opening}</td><td style="text-align:right">${r.rec}</td><td style="text-align:right">${r.dis}</td><td style="text-align:right">${r.closing}</td><td style="text-align:right">${Number(r.value).toFixed(2)}</td></tr>`).join("")}
-        <tr style="background:#E1F5EE;font-weight:700"><td colspan="8" style="text-align:right">GRAND TOTAL VALUE</td><td style="text-align:right">MYR ${Number(gTotal).toFixed(2)}</td></tr>
+       <tr style="background:#f5f5f5;font-weight:600">
+          <td colspan="5" style="text-align:right;font-size:12px;color:#555">Total received (in period)</td>
+          <td style="text-align:right;color:#0F6E56">${stockRows.reduce((a,r)=>a+r.rec,0)} units</td>
+          <td colspan="2" style="text-align:right;color:#0F6E56">MYR ${Number(stockRows.reduce((a,r)=>a+r.value,0)).toFixed(2)}</td>
+          <td style="text-align:right;color:#0F6E56">MYR ${Number(stockRows.reduce((a,r)=>a+r.value,0)).toFixed(2)}</td>
+        </tr>
+        <tr style="background:#f5f5f5;font-weight:600">
+          <td colspan="5" style="text-align:right;font-size:12px;color:#555">Total dispatched (in period)</td>
+          <td colspan="2" style="text-align:right;color:#D85A30">${stockRows.reduce((a,r)=>a+r.dis,0)} units</td>
+          <td colspan="2" style="text-align:right;color:#D85A30">MYR ${Number(stockRows.reduce((a,r)=>a+(r.dis*(r.rate||0)),0)).toFixed(2)}</td>
+        </tr>
+        <tr style="background:#E1F5EE;font-weight:700">
+          <td colspan="5" style="text-align:right">Current stock value (all items)</td>
+          <td colspan="2" style="text-align:right">${stockRows.reduce((a,r)=>a+r.closing,0)} units</td>
+          <td colspan="2" style="text-align:right">MYR ${Number(stockRows.reduce((a,r)=>a+(r.closing*(r.rate||0)),0)).toFixed(2)}</td>
+        </tr>
         </tbody></table>`;
       }
       w.document.write(`<!DOCTYPE html><html><head><title>Khan Jees Report</title>
@@ -1759,9 +1854,41 @@ function Demand() {
                     <td style={{...S.tdR,fontWeight:500}}>{fmt(r.value)}</td>
                   </tr>
                 ))}
-                <tr style={S.grandRow}>
-                  <td colSpan={8} style={{...S.tdR,fontWeight:700,color:"#085041"}}>GRAND TOTAL VALUE</td>
-                  <td style={{...S.tdR,fontWeight:700,fontSize:15,color:"#085041"}}>{fmt(stockRows.reduce((a,r)=>a+r.value,0))}</td>
+                <tr style={{background:"var(--color-background-secondary)"}}>
+                  <td colSpan={5} style={{...S.tdR,fontWeight:600,color:"var(--color-text-secondary)",fontSize:12}}>
+                    Total received (in period)
+                  </td>
+                  <td style={{...S.tdR,fontWeight:600,color:"#0F6E56"}}>
+                    {stockRows.reduce((a,r)=>a+r.rec,0)} units
+                  </td>
+                  <td colSpan={2} style={{...S.tdR,fontWeight:600,color:"#0F6E56"}}>
+                    {fmt(stockRows.reduce((a,r)=>a+r.value,0))}
+                  </td>
+                  <td style={{...S.tdR,fontWeight:600,color:"#0F6E56"}}>
+                    {fmt(stockRows.reduce((a,r)=>a+r.value,0))}
+                  </td>
+                </tr>
+                <tr style={{background:"var(--color-background-secondary)"}}>
+                  <td colSpan={5} style={{...S.tdR,fontWeight:600,color:"var(--color-text-secondary)",fontSize:12}}>
+                    Total dispatched (in period)
+                  </td>
+                  <td colSpan={2} style={{...S.tdR,fontWeight:600,color:"#D85A30"}}>
+                    {stockRows.reduce((a,r)=>a+r.dis,0)} units
+                  </td>
+                  <td colSpan={2} style={{...S.tdR,fontWeight:600,color:"#D85A30"}}>
+                    {fmt(stockRows.reduce((a,r)=>a+(r.dis*(r.rate||0)),0))}
+                  </td>
+                </tr>
+                <tr style={{background:"#E1F5EE"}}>
+                  <td colSpan={5} style={{...S.tdR,fontWeight:700,color:"#085041",fontSize:13}}>
+                    Current stock value (all items)
+                  </td>
+                  <td colSpan={2} style={{...S.tdR,fontWeight:700,color:"#085041",fontSize:13}}>
+                    {stockRows.reduce((a,r)=>a+r.closing,0)} units
+                  </td>
+                  <td colSpan={2} style={{...S.tdR,fontWeight:700,color:"#085041",fontSize:15}}>
+                    {fmt(stockRows.reduce((a,r)=>a+(r.closing*(r.rate||0)),0))}
+                  </td>
                 </tr>
               </tbody>
               </table>
