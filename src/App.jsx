@@ -788,7 +788,8 @@ export default function App() {
   // ── RECEIVING ──────────────────────────────────────────────
   // ── RECEIVING ──────────────────────────────────────────────
   function Receiving() {
-    const blank = { date:today(), itemId:"", qty:"", rate:"", supplier:"", notes:"" };
+    const getSavedDate = () => localStorage.getItem("receivingDate") || today();
+    const blank = { date: getSavedDate(), itemId:"", qty:"", rate:"", supplier:"", notes:"" };
     const [form, setForm]         = useState(blank);
     const [itemSearch, setSearch] = useState("");
     const [showDrop, setShowDrop] = useState(false);
@@ -814,11 +815,11 @@ export default function App() {
       if (!form.itemId || !form.qty || !form.rate) return;
       const newRate = Number(form.rate);
       const itemId  = form.itemId;
-      setReceiving([...receiving, { ...form, id: Date.now(), itemId, qty: Number(form.qty), rate: newRate }]);
+     setReceiving([...receiving, { ...form, id: Date.now(), itemId, qty: Number(form.qty), rate: newRate }]);
       if (items.find(i => String(i.id) === String(itemId))?.rate !== newRate) {
         setItems(items.map(i => String(i.id) === String(itemId) ? { ...i, rate: newRate } : i));
       }
-      setForm(blank);
+      setForm({ date: getSavedDate(), itemId: "", qty: "", rate: "", supplier: form.supplier, notes: "" });
       setSearch("");
     };
 
@@ -829,10 +830,13 @@ export default function App() {
         <div style={S.card}>
           <p style={S.h2}>Record received stock (GRN)</p>
           <div style={S.fgrid}>
-            <div>
+           <div>
               <div style={S.lbl}>Date</div>
               <input type="date" value={form.date}
-                onChange={e => setForm({ ...form, date: e.target.value })} />
+                onChange={e => {
+                  localStorage.setItem("receivingDate", e.target.value);
+                  setForm({ ...form, date: e.target.value });
+                }} />
             </div>
 
             {/* ── Item search ── */}
@@ -1002,8 +1006,9 @@ export default function App() {
 
   // ── DISPATCHING ────────────────────────────────────────────
   // ── DISPATCHING ────────────────────────────────────────────
-  function Dispatching() {
-    const blank = { date: today(), itemId: "", branch: BRANCHES[0], qty: "", notes: "" };
+ function Dispatching() {
+    const getSavedDate = () => localStorage.getItem("dispatchDate") || today();
+    const blank = { date: getSavedDate(), itemId: "", branch: BRANCHES[0], qty: "", notes: "" };
     const [form, setForm]         = useState(blank);
     const [itemSearch, setSearch] = useState("");
     const [showDrop, setShowDrop] = useState(false);
@@ -1034,7 +1039,7 @@ export default function App() {
       setDisp([...dispatching, {
         ...form, id: Date.now(), itemId: form.itemId, qty: Number(form.qty)
       }]);
-      setForm(blank);
+      setForm({ date: getSavedDate(), itemId: "", branch: form.branch, qty: "", notes: "" });
       setSearch("");
     };
 
@@ -1043,10 +1048,13 @@ export default function App() {
         <div style={S.card}>
           <p style={S.h2}>Dispatch stock to branch</p>
           <div style={S.fgrid}>
-            <div>
+           <div>
               <div style={S.lbl}>Date</div>
               <input type="date" value={form.date}
-                onChange={e => setForm({ ...form, date: e.target.value })} />
+                onChange={e => {
+                  localStorage.setItem("dispatchDate", e.target.value);
+                  setForm({ ...form, date: e.target.value });
+                }} />
             </div>
 
             {/* ── Item search ── */}
