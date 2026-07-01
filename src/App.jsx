@@ -1661,12 +1661,12 @@ function Demand() {
       return result;
     };
 
-    const buildStockReport=()=>items.map(item=>{
-      const rec=receiving.filter(r=>inRange(r.date)&&r.itemId===item.id).reduce((a,r)=>a+r.qty,0);
-      const recVal=receiving.filter(r=>inRange(r.date)&&r.itemId===item.id).reduce((a,r)=>a+r.qty*r.rate,0);
-      const dis=dispatching.filter(d=>inRange(d.date)&&d.itemId===item.id).reduce((a,d)=>a+d.qty,0);
-      return{...item,rec,dis,closing:item.opening+rec-dis,value:recVal};
-    });
+   const buildStockReport=()=>items.map(item=>{
+  const rec=receiving.filter(r=>inRange(r.date)&&r.itemId===item.id).reduce((a,r)=>a+r.qty,0);
+  const dis=dispatching.filter(d=>inRange(d.date)&&d.itemId===item.id).reduce((a,r)=>a+r.qty,0);
+  const closing=item.opening+rec-dis;
+  return{...item,rec,dis,closing,value:closing*(item.rate||0)};
+});
 
     const branchData=buildBranchReport();
     const stockRows=buildStockReport();
